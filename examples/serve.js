@@ -38,6 +38,7 @@ createServer((req, res) => {
   }
 }).listen(port, () => {
   console.log(`Examples server running at http://localhost:${port}`);
-  console.log(`  Basic:       http://localhost:${port}/examples/basic/`);
-  console.log(`  Brotli test: http://localhost:${port}/examples/brotli-test/`);
+  console.log(`  Basic:                http://localhost:${port}/examples/basic/`);
+  console.log(`  Brotli test:          http://localhost:${port}/examples/brotli-test/`);
+  console.log(`  Child process test:   http://localhost:${port}/examples/child-process-test/`);
 });

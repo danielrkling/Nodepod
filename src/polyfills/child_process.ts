@@ -1943,23 +1943,32 @@ export function spawn(
     // keep parent alive while child is running
     ref();
 
+    // Track whether streaming callbacks fire (they don't for builtins like ls)
+    let stdoutStreamed = false;
+    let stderrStreamed = false;
+
     _spawnChildFn(command, spawnArgs, {
       cwd,
       env,
       stdio: "pipe",
       onStdout: (data: string) => {
+        stdoutStreamed = true;
         child.stdout?.push(Buffer.from(data));
         // also route through parent's stdout sink for terminal output
         const sink = getStdoutSink();
         if (sink) sink(data);
       },
       onStderr: (data: string) => {
+        stderrStreamed = true;
         child.stderr?.push(Buffer.from(data));
         const sink = getStderrSink();
         if (sink) sink(data);
       },
-    }).then(({ exitCode }) => {
+    }).then(({ exitCode, stdout, stderr }) => {
       unref(); // Child done — release event loop hold
+      // For commands that don't stream (builtins), push the buffered output
+      if (!stdoutStreamed && stdout) child.stdout?.push(Buffer.from(stdout));
+      if (!stderrStreamed && stderr) child.stderr?.push(Buffer.from(stderr));
       child.stdout?.push(null);
       child.stderr?.push(null);
       child.exitCode = exitCode;
