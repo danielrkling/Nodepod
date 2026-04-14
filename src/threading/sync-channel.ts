@@ -24,30 +24,38 @@ const COUNTER_INDEX = MAX_SLOTS * SLOT_SIZE;
 
 // --- SyncChannelController (main thread) ---
 export class SyncChannelController {
-  private _buffer: SharedArrayBuffer;
-  private _int32: Int32Array;
-  private _uint8: Uint8Array;
+  private _buffer: SharedArrayBuffer | null = null;
+  private _int32: Int32Array | null = null;
+  private _uint8: Uint8Array | null = null;
+  private _isInitialized = false;
 
   constructor(bufferSize: number = DEFAULT_SYNC_BUFFER_SIZE) {
     if (!isSharedArrayBufferAvailable()) {
-      throw new Error("SharedArrayBuffer not available. Ensure COOP/COEP headers are set.");
+      console.warn("SharedArrayBuffer not available. Blocking execSync/spawnSync will not be available.");
+      return;
     }
 
     this._buffer = new SharedArrayBuffer(bufferSize);
     this._int32 = new Int32Array(this._buffer);
     this._uint8 = new Uint8Array(this._buffer);
+    this._isInitialized = true;
 
     for (let i = 0; i < MAX_SLOTS; i++) {
-      Atomics.store(this._int32, i * SLOT_SIZE, STATUS_PENDING);
+      Atomics.store(this._int32!, i * SLOT_SIZE, STATUS_PENDING);
     }
-    Atomics.store(this._int32, COUNTER_INDEX, 0);
+    Atomics.store(this._int32!, COUNTER_INDEX, 0);
   }
 
-  get buffer(): SharedArrayBuffer {
+  get buffer(): SharedArrayBuffer | null {
     return this._buffer;
   }
 
+  get isAvailable(): boolean {
+    return this._isInitialized;
+  }
+
   writeResult(syncSlot: number, exitCode: number, stdout: string): void {
+    if (!this._isInitialized || !this._int32 || !this._uint8) return;
     const base = syncSlot * SLOT_SIZE;
 
     Atomics.store(this._int32, base + 1, exitCode);
@@ -68,9 +76,10 @@ export class SyncChannelController {
   }
 
   writeError(syncSlot: number, exitCode: number, errorMessage: string): void {
+    if (!this._isInitialized || !this._int32 || !this._uint8) return;
     const base = syncSlot * SLOT_SIZE;
 
-    Atomics.store(this._int32, base + 1, exitCode);
+    Atomics.store(this._int32!, base + 1, exitCode);
 
     const encoder = new TextEncoder();
     const errorBytes = encoder.encode(errorMessage);

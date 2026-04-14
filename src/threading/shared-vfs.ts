@@ -67,34 +67,42 @@ function fnv1a(str: string): number {
 
 // Main-thread controller. Owns the SAB and manages the file table.
 export class SharedVFSController {
-  private _buffer: SharedArrayBuffer;
-  private _view: DataView;
-  private _int32: Int32Array;
-  private _uint8: Uint8Array;
+  private _buffer: SharedArrayBuffer | null = null;
+  private _view: DataView | null = null;
+  private _int32: Int32Array | null = null;
+  private _uint8: Uint8Array | null = null;
   private _pathEncoder = new TextEncoder();
   private _pathDecoder = new TextDecoder();
+  private _isInitialized = false;
 
   constructor(bufferSize: number = DEFAULT_BUFFER_SIZE) {
     if (!isSharedArrayBufferAvailable()) {
-      throw new Error('SharedArrayBuffer not available. Ensure COOP/COEP headers are set.');
+      console.warn('SharedArrayBuffer not available. Falling back to VFSBridge-based async IPC.');
+      return;
     }
 
     this._buffer = new SharedArrayBuffer(bufferSize);
     this._view = new DataView(this._buffer);
     this._int32 = new Int32Array(this._buffer);
     this._uint8 = new Uint8Array(this._buffer);
+    this._isInitialized = true;
 
-    Atomics.store(this._int32, 0, 0);
-    Atomics.store(this._int32, 1, 0);
-    this._view.setUint32(8, 0);
-    Atomics.store(this._int32, 3, 0);
+    Atomics.store(this._int32!, 0, 0);
+    Atomics.store(this._int32!, 1, 0);
+    this._view!.setUint32(8, 0);
+    Atomics.store(this._int32!, 3, 0);
   }
 
-  get buffer(): SharedArrayBuffer {
+  get buffer(): SharedArrayBuffer | null {
     return this._buffer;
   }
 
+  get isAvailable(): boolean {
+    return this._isInitialized;
+  }
+
   writeFile(path: string, content: Uint8Array): boolean {
+    if (!this._isInitialized || !this._int32 || !this._view || !this._uint8 || !this._buffer) return false;
     this._lock();
     try {
       const entryCount = Atomics.load(this._int32, 1);
@@ -135,6 +143,7 @@ export class SharedVFSController {
   }
 
   writeDirectory(path: string): boolean {
+    if (!this._isInitialized || !this._int32 || !this._view || !this._uint8) return false;
     this._lock();
     try {
       const entryCount = Atomics.load(this._int32, 1);
@@ -163,6 +172,7 @@ export class SharedVFSController {
   }
 
   deleteFile(path: string): boolean {
+    if (!this._isInitialized || !this._int32 || !this._view || !this._uint8) return false;
     this._lock();
     try {
       const idx = this._findEntry(path);
@@ -181,6 +191,7 @@ export class SharedVFSController {
   }
 
   readFile(path: string): Uint8Array | null {
+    if (!this._isInitialized || !this._view || !this._uint8) return null;
     const idx = this._findEntry(path);
     if (idx === -1) return null;
 
@@ -199,16 +210,19 @@ export class SharedVFSController {
   }
 
   exists(path: string): boolean {
+    if (!this._isInitialized) return false;
     return this._findEntry(path) !== -1;
   }
 
   get version(): number {
+    if (!this._isInitialized || !this._int32) return 0;
     return Atomics.load(this._int32, 0);
   }
 
   /* ---- Internal ---- */
 
   private _findEntry(path: string): number {
+    if (!this._isInitialized || !this._int32 || !this._view || !this._uint8) return -1;
     const entryCount = Atomics.load(this._int32, 1);
     const pathBytes = this._pathEncoder.encode(path);
 
@@ -232,6 +246,7 @@ export class SharedVFSController {
   }
 
   private _updateEntry(idx: number, content: Uint8Array, dataUsed: number): boolean {
+    if (!this._isInitialized || !this._buffer || !this._uint8 || !this._view || !this._int32) return false;
     if (DATA_OFFSET + dataUsed + content.byteLength > this._buffer.byteLength) return false;
 
     const entryOffset = HEADER_SIZE + idx * ENTRY_SIZE;
@@ -252,14 +267,16 @@ export class SharedVFSController {
   }
 
   private _lock(): void {
-    while (Atomics.compareExchange(this._int32, 3, 0, 1) !== 0) {
-      Atomics.wait(this._int32, 3, 1, 1);
+    if (!this._isInitialized) return;
+    while (Atomics.compareExchange(this._int32!, 3, 0, 1) !== 0) {
+      Atomics.wait(this._int32!, 3, 1, 1);
     }
   }
 
   private _unlock(): void {
-    Atomics.store(this._int32, 3, 0);
-    Atomics.notify(this._int32, 3);
+    if (!this._isInitialized) return;
+    Atomics.store(this._int32!, 3, 0);
+    Atomics.notify(this._int32!, 3);
   }
 }
 

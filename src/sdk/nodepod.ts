@@ -83,15 +83,19 @@ export class Nodepod {
     if (isSharedArrayBufferAvailable()) {
       try {
         this._sharedVFS = new SharedVFSController();
-        this._processManager.setSharedBuffer(this._sharedVFS.buffer);
-        this._vfsBridge.setSharedVFS(this._sharedVFS);
+        if (this._sharedVFS.isAvailable && this._sharedVFS.buffer) {
+          this._processManager.setSharedBuffer(this._sharedVFS.buffer);
+          this._vfsBridge.setSharedVFS(this._sharedVFS);
+        }
       } catch (e) {
         // COOP/COEP headers probably missing
       }
 
       try {
         this._syncChannel = new SyncChannelController();
-        this._processManager.setSyncBuffer(this._syncChannel.buffer);
+        if (this._syncChannel.isAvailable && this._syncChannel.buffer) {
+          this._processManager.setSyncBuffer(this._syncChannel.buffer);
+        }
       } catch (e) {
         // SyncChannel init failed
       }
@@ -150,8 +154,10 @@ export class Nodepod {
       );
     }
     if (typeof SharedArrayBuffer === "undefined") {
-      throw new Error(
-        "[Nodepod] SharedArrayBuffer is required. Ensure Cross-Origin-Isolation headers are set (Cross-Origin-Opener-Policy: same-origin, Cross-Origin-Embedder-Policy: credentialless).",
+      console.warn(
+        "[Nodepod] SharedArrayBuffer is not available. " +
+          "Cross-Origin-Isolation headers are not set (Cross-Origin-Opener-Policy: same-origin, Cross-Origin-Embedder-Policy: credentialless). " +
+          "Blocking execSync/spawnSync and synchronous file reads will not be available. Nodepod will continue with reduced functionality."
       );
     }
 
