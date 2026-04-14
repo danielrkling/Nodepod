@@ -3,6 +3,9 @@
 import { Buffer } from "./buffer";
 import { Transform } from "./stream";
 import { CDN_BROTLI_WASM, cdnImport } from "../constants/cdn-urls";
+// Pure JS brotli decompressor (no WASM, no Node APIs) - sync fallback
+// @ts-ignore - no type declarations for brotli/decompress
+import brotliJsDecompress from "brotli/decompress";
 import pako from "pako";
 
 
@@ -17,9 +20,18 @@ let brotliLoading: Promise<BrotliEngine | null> | null = null;
 async function loadBrotli(): Promise<BrotliEngine | null> {
   // Strategy 1 — CDN import (browser / Nodepod runtime).
   // cdnImport uses `new Function` to hide from the bundler.
+  // The pkg.web variant exports init() as default + compress/decompress
+  // as named exports. init() fetches the co-located .wasm binary.
   try {
     const mod = await cdnImport(CDN_BROTLI_WASM);
-    brotliInstance = await mod.default;
+    if (typeof mod.default === "function") {
+      // pkg.web: call init() to load WASM, then use named exports
+      await mod.default();
+      brotliInstance = { compress: mod.compress, decompress: mod.decompress };
+    } else {
+      // fallback: default is a promise or already the engine
+      brotliInstance = (await mod.default) as BrotliEngine;
+    }
     return brotliInstance;
   } catch { /* CDN unreachable or not in browser */ }
 
@@ -49,6 +61,13 @@ async function ensureBrotli(): Promise<BrotliEngine | null> {
   }
   brotliLoading = loadBrotli();
   return brotliLoading;
+}
+
+/** Pure JS brotli decompressor, used as sync fallback when WASM isn't ready. */
+function brotliDecompressJs(input: Uint8Array): Uint8Array {
+  const result = brotliJsDecompress(Buffer.from(input));
+  if (!result) throw new Error("Brotli JS decompression failed");
+  return new Uint8Array(result);
 }
 
 /**
@@ -209,7 +228,7 @@ export function brotliCompressSync(
 ): Buffer {
   if (!brotliInstance) {
     throw new Error(
-      "Brotli WASM not loaded yet. Call `await preloadBrotli()` or use async brotliCompress first.",
+      "Brotli WASM not loaded yet. Use async brotliCompress() or await preloadBrotli() first.",
     );
   }
   const data = typeof input === "string" ? Buffer.from(input) : input;
@@ -217,12 +236,11 @@ export function brotliCompressSync(
 }
 
 export function brotliDecompressSync(input: Buffer, _opts?: unknown): Buffer {
-  if (!brotliInstance) {
-    throw new Error(
-      "Brotli WASM not loaded yet. Call `await preloadBrotli()` or use async brotliDecompress first.",
-    );
+  if (brotliInstance) {
+    return Buffer.from(brotliInstance.decompress(new Uint8Array(input)));
   }
-  return Buffer.from(brotliInstance.decompress(new Uint8Array(input)));
+  // Pure JS fallback when WASM isn't ready yet
+  return Buffer.from(brotliDecompressJs(new Uint8Array(input)));
 }
 
 // pako v2 may call onEnd synchronously during push(), moving chunks->result

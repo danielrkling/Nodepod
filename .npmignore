@@ -3,6 +3,7 @@
 
 # Development files
 docs/
+examples/
 static/
 coverage/
 .github/
