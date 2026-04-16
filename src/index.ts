@@ -163,6 +163,11 @@ export { NodepodTerminal } from "./sdk/nodepod-terminal";
 export { NodepodProcess } from "./sdk/nodepod-process";
 export { NodepodFS } from "./sdk/nodepod-fs";
 export type {
+  OpenFilePickerOptions,
+  SaveFilePickerOptions,
+  DirectoryPickerOptions,
+} from "./sdk/nodepod-fs";
+export type {
   NodepodOptions,
   TerminalOptions,
   TerminalTheme,

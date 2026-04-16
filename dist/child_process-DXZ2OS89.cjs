@@ -2,7 +2,7 @@
 
 Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
 
-const index = require('./index-Cyog5vq4.cjs');
+const index = require('./index-jTH4x9iD.cjs');
 
 function expandVariables(raw, env, lastExit) {
   let result = "";
@@ -6087,7 +6087,7 @@ function formatWarn(msg, pm) {
   }
 }
 async function installPackages(args, ctx, pm = "npm") {
-  const { DependencyInstaller } = await Promise.resolve().then(() => require('./index-Cyog5vq4.cjs')).then(n => n.installer);
+  const { DependencyInstaller } = await Promise.resolve().then(() => require('./index-jTH4x9iD.cjs')).then(n => n.installer);
   const installer = new DependencyInstaller(_vol, { cwd: ctx.cwd });
   let out = "";
   const write = _stdoutSink ?? ((_s) => {
@@ -6194,7 +6194,7 @@ async function uninstallPackages(args, ctx, pm = "npm") {
   return { stdout: out, stderr: "", exitCode: 0 };
 }
 async function listPackages(ctx, pm = "npm") {
-  const { DependencyInstaller } = await Promise.resolve().then(() => require('./index-Cyog5vq4.cjs')).then(n => n.installer);
+  const { DependencyInstaller } = await Promise.resolve().then(() => require('./index-jTH4x9iD.cjs')).then(n => n.installer);
   const installer = new DependencyInstaller(_vol, { cwd: ctx.cwd });
   const pkgs = installer.listInstalled();
   const entries = Object.entries(pkgs);
@@ -6331,7 +6331,7 @@ async function npmInfo(args, ctx) {
     }
   }
   try {
-    const { RegistryClient } = await Promise.resolve().then(() => require('./index-Cyog5vq4.cjs')).then(n => n.registryClient);
+    const { RegistryClient } = await Promise.resolve().then(() => require('./index-jTH4x9iD.cjs')).then(n => n.registryClient);
     const client = new RegistryClient();
     const meta = await client.fetchManifest(name);
     const latest = meta["dist-tags"]?.latest;
@@ -7444,4 +7444,4 @@ exports.setSyncChannel = setSyncChannel;
 exports.shellExec = shellExec;
 exports.spawn = spawn;
 exports.spawnSync = spawnSync;
-//# sourceMappingURL=child_process-CmO8cP_V.cjs.map
+//# sourceMappingURL=child_process-DXZ2OS89.cjs.map

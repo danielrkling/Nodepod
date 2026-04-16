@@ -1,5 +1,31 @@
 import type { MemoryVolume } from "../memory-volume";
 import type { StatResult } from "./types";
+declare global {
+    interface Window {
+        showOpenFilePicker?: (options?: OpenFilePickerOptions) => Promise<FileSystemFileHandle[]>;
+        showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
+        showDirectoryPicker?: (options?: DirectoryPickerOptions) => Promise<FileSystemDirectoryHandle>;
+    }
+}
+export interface OpenFilePickerOptions {
+    multiple?: boolean;
+    excludeAcceptAllOption?: boolean;
+    types?: Array<{
+        description?: string;
+        accept: Record<string, string[]>;
+    }>;
+}
+export interface SaveFilePickerOptions {
+    excludeAcceptAllOption?: boolean;
+    suggestedName?: string;
+    types?: Array<{
+        description?: string;
+        accept: Record<string, string[]>;
+    }>;
+}
+export interface DirectoryPickerOptions {
+    mode?: "read" | "readwrite";
+}
 export declare class NodepodFS {
     private _vol;
     constructor(_vol: MemoryVolume);
@@ -24,4 +50,22 @@ export declare class NodepodFS {
     };
     get volume(): MemoryVolume;
     private _removeRecursive;
+    importFile(opts?: {
+        multiple?: boolean;
+    }): Promise<string[]>;
+    importFile(vfsPath?: string, opts?: {
+        multiple?: boolean;
+    }): Promise<string[]>;
+    importFileFromPath(sourcePath: string, targetVfsPath: string): Promise<void>;
+    importDirectory(vfsPath?: string, opts?: DirectoryPickerOptions): Promise<string>;
+    private _importDirectoryRecursive;
+    exportFile(vfsPath: string, opts?: {
+        suggestedName?: string;
+    }): Promise<string>;
+    exportFile(vfsPath: string, targetPath?: string): Promise<string>;
+    exportFileToPath(vfsPath: string, targetPath: string): Promise<void>;
+    exportDirectory(vfsPath: string): Promise<string>;
+    private _exportDirectoryRecursive;
+    exportDirectoryToPath(vfsPath: string, targetPath: string): Promise<void>;
+    isFileSystemAccessSupported(): boolean;
 }

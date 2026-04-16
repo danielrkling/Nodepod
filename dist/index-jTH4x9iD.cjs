@@ -34709,7 +34709,7 @@ class ScriptEngine {
     });
     this.fsBridge = buildFileSystemBridge(vol, () => this.proc.cwd());
     this.opts = opts;
-    Promise.resolve().then(() => require('./child_process-CmO8cP_V.cjs')).then((mod) => {
+    Promise.resolve().then(() => require('./child_process-DXZ2OS89.cjs')).then((mod) => {
       _shellExecPolyfill = mod;
       mod.initShellExec;
     }).catch(() => {
@@ -35691,7 +35691,7 @@ function generateUUID() {
 }
 
 function createWorker() {
-  const base = (typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (_documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === 'SCRIPT' && _documentCurrentScript.src || new URL('index-Cyog5vq4.cjs', document.baseURI).href));
+  const base = (typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (_documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === 'SCRIPT' && _documentCurrentScript.src || new URL('index-jTH4x9iD.cjs', document.baseURI).href));
   const path = "./threading/engine-worker.ts";
   const url = new globalThis.URL(path, base);
   return new globalThis.Worker(url, { type: "module" });
@@ -37579,7 +37579,7 @@ function readServiceWorkerSource() {
     let dir;
     try {
       const url = _req("url");
-      dir = path.dirname(url.fileURLToPath((typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (_documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === 'SCRIPT' && _documentCurrentScript.src || new URL('index-Cyog5vq4.cjs', document.baseURI).href))));
+      dir = path.dirname(url.fileURLToPath((typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (_documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === 'SCRIPT' && _documentCurrentScript.src || new URL('index-jTH4x9iD.cjs', document.baseURI).href))));
     } catch {
       dir = typeof __dirname !== "undefined" ? __dirname : ".";
     }
@@ -40073,6 +40073,9 @@ function resetProxy() {
   instance = null;
 }
 
+function isFileSystemAccessSupported() {
+  return typeof window !== "undefined" && "showOpenFilePicker" in window;
+}
 class NodepodFS {
   constructor(_vol) {
     this._vol = _vol;
@@ -40137,6 +40140,196 @@ class NodepodFS {
       else this._vol.unlinkSync(full);
     }
     this._vol.rmdirSync(dir);
+  }
+  async importFile(vfsPathOrOpts, opts) {
+    if (!isFileSystemAccessSupported()) {
+      throw new Error(
+        "File System Access API is not supported. Use importFileFromPath() instead or ensure you're running in a Chromium-based browser."
+      );
+    }
+    const multiple = typeof vfsPathOrOpts === "object" ? vfsPathOrOpts.multiple : opts?.multiple ?? false;
+    const vfsPath = typeof vfsPathOrOpts === "string" ? vfsPathOrOpts : "/";
+    const handles = await window.showOpenFilePicker({
+      multiple,
+      types: [
+        {
+          description: "All Files",
+          accept: { "*/*": [] }
+        }
+      ]
+    });
+    const importedPaths = [];
+    for (const handle of handles) {
+      const file = await handle.getFile();
+      const fileName = handle.name;
+      let targetPath = vfsPath;
+      if (vfsPath === "/" || vfsPath === "" || this._vol.statSync(vfsPath).isFile()) {
+        targetPath = vfsPath === "/" ? `/${fileName}` : vfsPath;
+      } else {
+        targetPath = vfsPath.endsWith("/") ? `${vfsPath}${fileName}` : `${vfsPath}/${fileName}`;
+      }
+      const dir = targetPath.substring(0, targetPath.lastIndexOf("/")) || "/";
+      if (dir !== "/" && !this._vol.existsSync(dir)) {
+        this._vol.mkdirSync(dir, { recursive: true });
+      }
+      const content = new Uint8Array(await file.arrayBuffer());
+      this._vol.writeFileSync(targetPath, content);
+      importedPaths.push(targetPath);
+    }
+    return importedPaths;
+  }
+  async importFileFromPath(sourcePath, targetVfsPath) {
+    const response = await fetch(sourcePath);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch file: ${response.statusText}`);
+    }
+    const content = new Uint8Array(await response.arrayBuffer());
+    const dir = targetVfsPath.substring(0, targetVfsPath.lastIndexOf("/")) || "/";
+    if (dir !== "/" && !this._vol.existsSync(dir)) {
+      this._vol.mkdirSync(dir, { recursive: true });
+    }
+    this._vol.writeFileSync(targetVfsPath, content);
+  }
+  async importDirectory(vfsPath, opts) {
+    if (!isFileSystemAccessSupported()) {
+      throw new Error(
+        "File System Access API is not supported. Ensure you're running in a Chromium-based browser."
+      );
+    }
+    const targetPath = vfsPath ?? "/";
+    const mode = opts?.mode ?? "read";
+    const dirHandle = await window.showDirectoryPicker({ mode });
+    const dir = targetPath.endsWith("/") ? targetPath.slice(0, -1) : targetPath;
+    const baseName = dirHandle.name;
+    const vfsDir = dir === "/" ? `/${baseName}` : `${dir}/${baseName}`;
+    if (!this._vol.existsSync(vfsDir)) {
+      this._vol.mkdirSync(vfsDir, { recursive: true });
+    }
+    const importedPaths = [];
+    await this._importDirectoryRecursive(dirHandle, vfsDir, importedPaths);
+    return vfsDir;
+  }
+  async _importDirectoryRecursive(dirHandle, vfsDir, importedPaths) {
+    const entries = dirHandle.values();
+    for await (const entry of entries) {
+      const entryVfsPath = `${vfsDir}/${entry.name}`;
+      if (entry.kind === "file") {
+        const file = await entry.getFile();
+        const content = new Uint8Array(await file.arrayBuffer());
+        this._vol.writeFileSync(entryVfsPath, content);
+        importedPaths.push(entryVfsPath);
+      } else if (entry.kind === "directory") {
+        if (!this._vol.existsSync(entryVfsPath)) {
+          this._vol.mkdirSync(entryVfsPath, { recursive: true });
+        }
+        await this._importDirectoryRecursive(entry, entryVfsPath, importedPaths);
+      }
+    }
+  }
+  async exportFile(vfsPath, targetPathOrOpts) {
+    if (!isFileSystemAccessSupported()) {
+      throw new Error(
+        "File System Access API is not supported. Use exportFileToPath() instead or ensure you're running in a Chromium-based browser."
+      );
+    }
+    if (!this._vol.existsSync(vfsPath)) {
+      throw new Error(`ENOENT: no such file or directory, '${vfsPath}'`);
+    }
+    if (!this._vol.statSync(vfsPath).isFile()) {
+      throw new Error(`EISDIR: illegal operation on a directory, exportFile '${vfsPath}'`);
+    }
+    const suggestedName = typeof targetPathOrOpts === "object" ? targetPathOrOpts.suggestedName : void 0;
+    suggestedName ?? vfsPath.split("/").pop() ?? "download";
+    const handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [
+        {
+          description: "All Files",
+          accept: { "*/*": [] }
+        }
+      ]
+    });
+    const writable = await handle.createWritable();
+    const content = this._vol.readFileSync(vfsPath);
+    await writable.write(content.buffer);
+    await writable.close();
+    return handle.name;
+  }
+  async exportFileToPath(vfsPath, targetPath) {
+    if (!this._vol.existsSync(vfsPath)) {
+      throw new Error(`ENOENT: no such file or directory, '${vfsPath}'`);
+    }
+    const content = this._vol.readFileSync(vfsPath);
+    const blob = new Blob([content.buffer]);
+    const response = new Response(blob);
+    const buffer = await response.arrayBuffer();
+    const dir = targetPath.substring(0, targetPath.lastIndexOf("/")) || "/";
+    if (dir !== "/" && dir !== "") {
+      await this.exportDirectoryToPath("/", dir);
+    }
+    const handle = await window.showSaveFilePicker({
+      suggestedName: targetPath.split("/").pop(),
+      types: [
+        {
+          description: "All Files",
+          accept: { "*/*": [] }
+        }
+      ]
+    });
+    const writable = await handle.createWritable();
+    await writable.write(new Uint8Array(buffer).buffer);
+    await writable.close();
+  }
+  async exportDirectory(vfsPath) {
+    if (!isFileSystemAccessSupported()) {
+      throw new Error(
+        "File System Access API is not supported. Ensure you're running in a Chromium-based browser."
+      );
+    }
+    if (!this._vol.existsSync(vfsPath)) {
+      throw new Error(`ENOENT: no such file or directory, '${vfsPath}'`);
+    }
+    if (!this._vol.statSync(vfsPath).isDirectory()) {
+      throw new Error(`ENOTDIR: not a directory, exportDirectory '${vfsPath}'`);
+    }
+    const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    await this._exportDirectoryRecursive(vfsPath, dirHandle);
+    return dirHandle.name;
+  }
+  async _exportDirectoryRecursive(vfsPath, dirHandle) {
+    const entries = this._vol.readdirSync(vfsPath);
+    for (const name of entries) {
+      const entryVfsPath = `${vfsPath}/${name}`;
+      const stat = this._vol.statSync(entryVfsPath);
+      if (stat.isDirectory()) {
+        const subDirHandle = await dirHandle.getDirectoryHandle(name, { create: true });
+        await this._exportDirectoryRecursive(entryVfsPath, subDirHandle);
+      } else {
+        const fileHandle = await dirHandle.getFileHandle(name, { create: true });
+        const writable = await fileHandle.createWritable();
+        const content = this._vol.readFileSync(entryVfsPath);
+        await writable.write(content.buffer);
+        await writable.close();
+      }
+    }
+  }
+  async exportDirectoryToPath(vfsPath, targetPath) {
+    if (!isFileSystemAccessSupported()) {
+      throw new Error(
+        "File System Access API is not supported. Ensure you're running in a Chromium-based browser."
+      );
+    }
+    if (!this._vol.existsSync(vfsPath)) {
+      throw new Error(`ENOENT: no such file or directory, '${vfsPath}'`);
+    }
+    if (!this._vol.statSync(vfsPath).isDirectory()) {
+      throw new Error(`ENOTDIR: not a directory, exportDirectory '${vfsPath}'`);
+    }
+    const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    await this._exportDirectoryRecursive(vfsPath, dirHandle);
+  }
+  isFileSystemAccessSupported() {
+    return isFileSystemAccessSupported();
   }
 }
 
@@ -41256,7 +41449,7 @@ class WorkerVFS {
 
 let _shellMod = null;
 async function getShellMod() {
-  if (!_shellMod) _shellMod = await Promise.resolve().then(() => require('./child_process-CmO8cP_V.cjs'));
+  if (!_shellMod) _shellMod = await Promise.resolve().then(() => require('./child_process-DXZ2OS89.cjs'));
   return _shellMod;
 }
 function createWorkspace(config) {
@@ -41396,4 +41589,4 @@ exports.unref = unref;
 exports.urlPolyfill = urlPolyfill;
 exports.watcherPolyfill = watcherPolyfill;
 exports.wsPolyfill = wsPolyfill;
-//# sourceMappingURL=index-Cyog5vq4.cjs.map
+//# sourceMappingURL=index-jTH4x9iD.cjs.map
